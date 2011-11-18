@@ -1,0 +1,127 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.flazr</groupId>
+    <artifactId>flazr</artifactId>
+    <packaging>jar</packaging>
+    <version>0.7</version>
+    <name>Flazr</name>
+    <description>
+        Flazr is a Java implementation of protocols such as RTMP used for multimedia streaming.
+        The Flazr project includes a streaming media server and related utilities.
+    </description>
+    <url>http://flazr.com</url>
+    
+    <licenses>
+        <license>
+            <name>GNU Lesser General Public License, Version 3</name>
+            <url>COPYING.LESSER</url>
+        </license>
+    </licenses>
+    
+    <scm>
+        <connection>scm:svn:https://flazr.svn.sourceforge.net/svnroot/flazr/trunk/flazr</connection>
+        <url>http://flazr.svn.sourceforge.net/viewvc/flazr/trunk/flazr</url>
+    </scm>
+
+    <distributionManagement>
+        <site>
+            <id>flazr-sourceforge</id>
+            <url>scp://shell.sourceforge.net/home/groups/f/fl/flazr/htdocs</url>
+        </site>
+    </distributionManagement>
+    
+    <developers>
+        <developer>
+            <name>Peter Thomas</name>
+            <id>ptrthomas</id>
+            <url>http://ptrthomas.wordpress.com</url>                        
+            <timezone>+5.5</timezone>
+        </developer>
+    </developers>    
+    
+    <repositories>
+        <repository>
+            <id>jboss</id>
+            <url>http://repository.jboss.org/nexus/content/groups/public/</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.jboss.netty</groupId>
+            <artifactId>netty</artifactId>
+            <version>3.2.4.Final</version>
+            <scope>compile</scope>
+        </dependency>
+		<dependency>
+			<groupId>org.apache.httpcomponents</groupId>
+			<artifactId>httpclient</artifactId>
+			<version>4.1.2</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>commons-logging</groupId>
+                    <artifactId>commons-logging</artifactId>
+                </exclusion>
+                <exclusion>
+				    <groupId>commons-codec</groupId>
+				    <artifactId>commons-codec</artifactId>
+                </exclusion>
+            </exclusions>            
+			<scope>compile</scope>
+		</dependency>
+		<dependency>
+		    <groupId>commons-codec</groupId>
+		    <artifactId>commons-codec</artifactId>
+		    <version>1.2</version>
+		</dependency>        
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+            <version>1.4.2</version>
+        </dependency>
+        <dependency>
+            <groupId>log4j</groupId>
+            <artifactId>log4j</artifactId>
+            <version>1.2.14</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>jcl104-over-slf4j</artifactId>
+            <version>1.4.2</version>
+            <scope>runtime</scope>
+        </dependency> 
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>4.8.1</version>
+            <scope>test</scope>
+        </dependency>       
+    </dependencies>
+
+    <build>
+        <finalName>${project.artifactId}</finalName>
+        <plugins>
+            <plugin>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>1.6</source>
+                    <target>1.6</target>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-site-plugin</artifactId>
+                <configuration>
+                    <templateFile>src/site/resources/template/maven-site.vm</templateFile>
+                </configuration>
+            </plugin>             
+        </plugins>
+    </build>
+
+</project>

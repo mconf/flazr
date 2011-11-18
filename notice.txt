@@ -1,0 +1,55 @@
+The Flazr Project
+=================
+
+Flazr <http://flazr.com> Copyright (C) 2009  Peter Thomas.
+
+Please visit the Flazr web site for more information.
+
+Flazr is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+Flazr is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License
+along with Flazr.  If not, see <http://www.gnu.org/licenses/>.
+
+Also, please refer to each LICENSE.<component>.txt file, which is located in
+the 'license' directory of the distribution, for the license terms of the
+components that this product depends on and may be included in the distribution.
+
+-------------------------------------------------------------------------------
+  
+This product depends on 'JBoss Netty', a network application framework 
+enabling development of high performance protocol servers and clients.
+
+  * LICENSE:  license/LICENSE.jboss-netty.txt (Apache License 2.0)
+  * HOMEPAGE: http://www.jboss.org/netty/  
+  
+This product optionally depends on 'Apache Commons HttpClient', a library for
+working with the HTTP protocol:
+
+  * LICENSE:  license/LICENSE.commons-httpclient.txt (Apache License 2.0)
+  * HOMEPAGE: http://hc.apache.org/httpclient-3.x/ 
+  
+This product optionally depends on 'Apache Commons Codec', a library which provides 
+implementations of common encoders and decoders such as Base64, Hex, Phonetic and URLs.
+
+  * LICENSE:  license/LICENSE.commons-codec.txt (Apache License 2.0)
+  * HOMEPAGE: http://commons.apache.org/codec/  
+  
+This product depends on 'SLF4J', a simple logging facade for Java,
+which can be obtained at:
+
+  * LICENSE:  license/LICENSE.slf4j.txt (MIT License)
+  * HOMEPAGE: http://www.slf4j.org/  
+
+This product optionally depends on 'Apache Log4J', a logging framework,
+which can be obtained at:
+
+  * LICENSE:  license/LICENSE.log4j.txt (Apache License 2.0)
+  * HOMEPAGE: http://logging.apache.org/log4j/
