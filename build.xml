@@ -77,9 +77,9 @@
         <jar destfile="target/flazr/lib/flazr-${flazr.version}.jar">
             <fileset dir="target/classes" excludes="log4j.properties"/>
         </jar>
-        <copy todir="target/flazr/home/apps/vod">
+        <!--copy todir="target/flazr/home/apps/vod">
             <fileset dir="home/apps/vod"/>
-        </copy>
+        </copy-->
         <copy todir="target/flazr/conf">
             <fileset dir="conf"/>
             <fileset dir="etc" includes="log4j.properties"/>
