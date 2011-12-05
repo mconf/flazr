@@ -146,7 +146,7 @@ public abstract class RtmpPublisher {
         for(final RtmpMessage message : reader.getStartMessages()) {
             writeToStream(channel, message);
         }
-        //write(channel);
+        write(channel);
     }
 
     public void writeToStream(final Channel channel, final RtmpMessage message) {
