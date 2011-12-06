@@ -27,6 +27,8 @@ import com.flazr.rtmp.message.Aggregate;
 import com.flazr.rtmp.message.MessageType;
 import com.flazr.rtmp.message.Metadata;
 import com.flazr.rtmp.message.MetadataAmf0;
+import com.flazr.rtmp.message.Video;
+
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.slf4j.Logger;
@@ -39,14 +41,19 @@ public class FlvReader implements RtmpReader {
     private final BufferReader in;
     private final long mediaStartPosition;
     private final Metadata metadata;
-    private int aggregateDuration;    
+    private int aggregateDuration;
+
+	private int width;
+	private int height;    
 
     public FlvReader(final String path) {
         in = new FileChannelReader(path);
         in.position(13); // skip flv header
+        
         final RtmpMessage metadataAtom = next();
         final RtmpMessage metadataTemp = 
                 MessageType.decode(metadataAtom.getHeader(), metadataAtom.encode());
+
         if(metadataTemp.getHeader().isMetadata()) {
             metadata = (Metadata) metadataTemp;
             mediaStartPosition = in.position();
@@ -57,6 +64,21 @@ public class FlvReader implements RtmpReader {
             mediaStartPosition = 13;
         }
         logger.debug("flv file metadata: {}", metadata);
+        
+        RtmpMessage firstFrame;
+        do {
+        	firstFrame = next();
+        } while (!firstFrame.getHeader().isVideo() && hasNext());
+        
+        if (firstFrame != null) {
+	        Video video = new Video(firstFrame.getHeader(), firstFrame.encode());
+	        width = video.getWidth();
+	        height = video.getHeight();
+	        metadata.setValue("width", width);
+	        metadata.setValue("height", height);
+	        // rewind
+	        seek(0);
+        }
     }
 
     @Override
@@ -197,8 +219,18 @@ public class FlvReader implements RtmpReader {
         in.close();
     }
 
-    public static void main(String[] args) {
-        FlvReader reader = new FlvReader("home/apps/vod/IronMan.flv");
+    @Override
+    public int getWidth() {
+		return width;
+	}
+
+    @Override
+	public int getHeight() {
+		return height;
+	}
+
+	public static void main(String[] args) {
+        FlvReader reader = new FlvReader("/home/felipe/codes/mconf/bbbot/bot/etc/sample.flv");
         while(reader.hasNext()) {
             RtmpMessage message = reader.next();
             logger.debug("{} {}", message, ChannelBuffers.hexDump(message.encode()));

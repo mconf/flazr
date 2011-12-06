@@ -124,4 +124,14 @@ public class LoopedReader implements RtmpReader {
         return message;
     }
 
+	@Override
+	public int getWidth() {
+		return reader.getWidth();
+	}
+
+	@Override
+	public int getHeight() {
+		return reader.getHeight();
+	}
+
 }
