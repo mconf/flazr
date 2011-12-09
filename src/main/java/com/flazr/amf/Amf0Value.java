@@ -218,7 +218,13 @@ public class Amf0Value {
                         }
                         break;
                     }
-                    map.put(decodeString(in), decode(in));
+                    try {
+                    	map.put(decodeString(in), decode(in));
+                    } catch (Exception e) {
+                    	// just ignore the rest of the message
+                    	while (in.readable())
+                    		in.readByte();
+                    }
                 }
                 return map;
             case DATE:
