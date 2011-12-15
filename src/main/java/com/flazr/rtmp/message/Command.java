@@ -108,15 +108,15 @@ public abstract class Command extends AbstractMessage {
 
     public static Command connect(ClientOptions options) {
         Amf0Object object = object(
-            pair("app", options.getAppName()),
-            pair("flashVer", "WIN 9,0,124,2"),
-            pair("tcUrl", options.getTcUrl()),
-            pair("fpad", false),
-            pair("audioCodecs", 1639.0),
-            pair("videoCodecs", 252.0),
-            pair("objectEncoding", 0.0),
-            pair("capabilities", 15.0),
-            pair("videoFunction", 1.0));
+            AbstractMessage.pair("app", options.getAppName()),
+            AbstractMessage.pair("flashVer", "LNX 11,1,102,55"),
+            AbstractMessage.pair("tcUrl", options.getTcUrl()),
+            AbstractMessage.pair("fpad", false),
+            AbstractMessage.pair("capabilities", 239.0),
+            AbstractMessage.pair("audioCodecs", 3575.0),
+            AbstractMessage.pair("videoCodecs", 252.0),
+            AbstractMessage.pair("videoFunction", 1.0),
+            AbstractMessage.pair("objectEncoding", 0.0));
         if(options.getParams() != null) {
             object.putAll(options.getParams());
         }
@@ -146,7 +146,7 @@ public abstract class Command extends AbstractMessage {
     }
 
     public static Command play(int streamId, ClientOptions options) {
-        final List playArgs = new ArrayList();
+        final List<Object> playArgs = new ArrayList<Object>();
         playArgs.add(options.getStreamName());
         if(options.getStart() != -2 || options.getArgs() != null) {
             playArgs.add(options.getStart());

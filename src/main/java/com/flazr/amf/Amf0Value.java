@@ -45,11 +45,16 @@ public class Amf0Value {
         OBJECT(0x03),
         NULL(0x05),
         UNDEFINED(0x06),
-        MAP(0x08),
-        ARRAY(0x0A),
+        REFERENCE(0x07),
+        MAP(0x08), // ecma-array
+        OBJECT_END(0x09),
+        ARRAY(0x0A), // strict-array
         DATE(0x0B),
         LONG_STRING(0x0C),
-        UNSUPPORTED(0x0D);
+        UNSUPPORTED(0x0D),
+        RECORDSET(0x0E),
+        XML_DOCUMENT(0x0F),
+        TYPED_OBJECT(0x10);
 
         private final int value;
 
@@ -78,7 +83,11 @@ public class Amf0Value {
             } else if (value instanceof Boolean) {
                 return BOOLEAN;
             } else if (value instanceof Amf0Object) {
-                return OBJECT;
+                Amf0Object obj = (Amf0Object) value;
+                if (obj.containsKey("classname"))
+                    return TYPED_OBJECT;
+                else
+                    return OBJECT;
             } else if (value instanceof Map) {
                 return MAP;
             } else if (value instanceof Object[]) {
@@ -122,12 +131,7 @@ public class Amf0Value {
                 out.writeInt(0);
                 // no break; remaining processing same as OBJECT
             case OBJECT:
-                final Map<String, Object> map = (Map) value;
-                for(final Map.Entry<String, Object> entry : map.entrySet()) {
-                    encodeString(out, entry.getKey());
-                    encode(out, entry.getValue());
-                }
-                out.writeBytes(OBJECT_END_MARKER);
+                encodeObject(out, value);
                 return;
             case ARRAY:
                 final Object[] array = (Object[]) value;
@@ -140,6 +144,11 @@ public class Amf0Value {
                 final long time = ((Date) value).getTime();
                 out.writeLong(Double.doubleToLongBits(time));
                 out.writeShort((short) 0);
+                return;
+            case TYPED_OBJECT:
+                final Map<String, Object> map = (Map) value;
+                encodeString(out, (String) map.remove("classname"));
+                encodeObject(out, value);
                 return;
             default:
                 // ignoring other types client doesn't require for now
@@ -158,6 +167,15 @@ public class Amf0Value {
         final byte[] bytes = value.getBytes(); // TODO UTF-8 ?
         out.writeShort((short) bytes.length);
         out.writeBytes(bytes);
+    }
+
+    private static void encodeObject(final ChannelBuffer out, final Object value) {
+        final Map<String, Object> map = (Map) value;
+        for (final Map.Entry<String, Object> entry : map.entrySet()) {
+            encodeString(out, entry.getKey());
+            encode(out, entry.getValue());
+        }
+        out.writeBytes(OBJECT_END_MARKER);
     }
 
     public static void encode(final ChannelBuffer out, final Object... values) {
@@ -218,13 +236,7 @@ public class Amf0Value {
                         }
                         break;
                     }
-                    try {
-                    	map.put(decodeString(in), decode(in));
-                    } catch (Exception e) {
-                    	// just ignore the rest of the message
-                    	while (in.readable())
-                    		in.readByte();
-                    }
+                    map.put(decodeString(in), decode(in));
                 }
                 return map;
             case DATE:
@@ -240,6 +252,11 @@ public class Amf0Value {
             case UNDEFINED:
             case UNSUPPORTED:
                 return null;
+            case TYPED_OBJECT:
+                String classname = decodeString(in);
+                Amf0Object object = (Amf0Object) decode(in, OBJECT);
+                object.put("classname", classname);
+                return object;
             default:
                 throw new RuntimeException("unexpected type: " + type);
         }
