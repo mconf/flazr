@@ -146,7 +146,8 @@ public abstract class RtmpPublisher {
         for(final RtmpMessage message : reader.getStartMessages()) {
             writeToStream(channel, message);
         }
-        write(channel);
+        // \TODO review why it should be commented! 
+        //write(channel);
     }
 
     public void writeToStream(final Channel channel, final RtmpMessage message) {
