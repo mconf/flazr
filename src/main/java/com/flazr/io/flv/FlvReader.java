@@ -51,10 +51,19 @@ public class FlvReader implements RtmpReader {
         in.position(13); // skip flv header
         
         final RtmpMessage metadataAtom = next();
-        final RtmpMessage metadataTemp = 
-                MessageType.decode(metadataAtom.getHeader(), metadataAtom.encode());
 
-        if(metadataTemp.getHeader().isMetadata()) {
+        /* TODO: block added to ignore an exception caused probably due to a new message in flv/rtmp
+                 that is not treated by flazr */
+        /*final*/ RtmpMessage metadataTemp = null;
+        try {
+            metadataTemp = MessageType.decode(metadataAtom.getHeader(), metadataAtom.encode());
+        } catch (Exception e) {
+            if (e.getMessage().equals("bad value / byte: 101 (hex: 65), java.lang.ArrayIndexOutOfBoundsException: 101")) {
+                logger.debug("Ignoring malformed metadata (bad value / byte: 101 (hex: 65))");
+            }
+        }
+
+        if(metadataTemp != null && metadataTemp.getHeader().isMetadata()) {
             metadata = (Metadata) metadataTemp;
             mediaStartPosition = in.position();
         } else {
