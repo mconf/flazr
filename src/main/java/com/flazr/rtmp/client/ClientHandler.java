@@ -39,7 +39,6 @@ import org.red5.server.so.SharedObjectMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.flazr.io.flv.FlvWriter;
 import com.flazr.rtmp.LoopedReader;
 import com.flazr.rtmp.RtmpMessage;
 import com.flazr.rtmp.RtmpPublisher;
@@ -55,6 +54,7 @@ import com.flazr.rtmp.message.WindowAckSize;
 import com.flazr.util.ChannelUtils;
 import com.flazr.util.Utils;
 
+@SuppressWarnings("deprecation")
 @ChannelPipelineCoverage("one")
 public class ClientHandler extends SimpleChannelUpstreamHandler {
 
@@ -160,176 +160,218 @@ public class ClientHandler extends SimpleChannelUpstreamHandler {
         super.channelClosed(ctx, e);
     }
     
-    @Override
-    public void messageReceived(final ChannelHandlerContext ctx, final MessageEvent me) {
+	@Override
+	public void messageReceived(ChannelHandlerContext ctx, MessageEvent me) {
     	if(publisher != null && publisher.handle(me)) {
            	return;
         }
         final Channel channel = me.getChannel();
         final RtmpMessage message = (RtmpMessage) me.getMessage();
         switch(message.getHeader().getMessageType()) {
-            case CHUNK_SIZE: // handled by decoder
-                break;
-            case CONTROL:
-                Control control = (Control) message;
-                logger.debug("control: {}", control);
-                switch(control.getType()) {
-                    case PING_REQUEST:
-                        final int time = control.getTime();
-                        logger.debug("server ping: {}", time);
-                        Control pong = Control.pingResponse(time);
-                        logger.debug("sending ping response: {}", pong);
-                        channel.write(pong);
-                        break;
-                    case SWFV_REQUEST:
-                        if(swfvBytes == null) {
-                            logger.warn("swf verification not initialized!" 
-                                + " not sending response, server likely to stop responding / disconnect");
-                        } else {
-                            Control swfv = Control.swfvResponse(swfvBytes);
-                            logger.info("sending swf verification response: {}", swfv);
-                            channel.write(swfv);
-                        }
-                        break;
-                    case STREAM_BEGIN:
-                        if(publisher != null && !publisher.isStarted()) {
-                            publisher.start(channel, options.getStart(),
-                                    options.getLength(), new ChunkSize(4096));
-                            return;
-                        }
-                        if(streamId !=0) {
-                            channel.write(Control.setBuffer(streamId, options.getBuffer()));
-                        }
-                        break;
-                    default:
-                        logger.debug("ignoring control message: {}", control);
-                }
-                break;
-            case METADATA_AMF0:
-            case METADATA_AMF3:
-                Metadata metadata = (Metadata) message;
-                if(metadata.getName().equals("onMetaData")) {
-                    logger.debug("writing 'onMetaData': {}", metadata);
-                    writer.write(message);
-                } else {
-                    logger.debug("ignoring metadata: {}", metadata);
-                }
-                break;
-            case AUDIO:
-            case VIDEO:
-            case AGGREGATE:      
-                writer.write(message);
-                bytesRead += message.getHeader().getSize();
-                if((bytesRead - bytesReadLastSent) > bytesReadWindow) {
-                    logger.debug("sending bytes read ack {}", bytesRead);
-                    bytesReadLastSent = bytesRead;
-                    channel.write(new BytesRead(bytesRead));
-                }
-                break;
-            case COMMAND_AMF0:
-            case COMMAND_AMF3:
-                Command command = (Command) message;                
-                String name = command.getName();
-                logger.debug("server command: {}", name);
-                if(name.equals("_result")) {
-                    String resultFor = transactionToCommandMap.get(command.getTransactionId());
-                    logger.info("result for method call: {}", resultFor);
-                    if(resultFor.equals("connect")) {
-                        writeCommandExpectingResult(channel, Command.createStream());
-                    } else if(resultFor.equals("createStream")) {
-                        streamId = ((Double) command.getArg(0)).intValue();
-                        logger.debug("streamId to use: {}", streamId);
-                        if(options.getPublishType() != null) { // TODO append, record                            
-                            RtmpReader reader;
-                            if(options.getFileToPublish() != null) {
-                                reader = RtmpPublisher.getReader(options.getFileToPublish());
-                            } else {
-                                reader = options.getReaderToPublish();
-                            }
-                            if(options.getLoop() > 1) {
-                                reader = new LoopedReader(reader, options.getLoop());
-                            }
-                            publisher = new RtmpPublisher(reader, streamId, options.getBuffer(), false, false) {
-                                @Override protected RtmpMessage[] getStopMessages(long timePosition) {
-                                    return new RtmpMessage[]{Command.unpublish(streamId)};
-                                }
-                            };                            
-                            channel.write(Command.publish(streamId, options));
-                            return;
-                        } else {
-                            writer = options.getWriterToSave();
-                            if(writer == null) {
-                                writer = new FlvWriter(options.getStart(), options.getSaveAs());
-                            }
-                            channel.write(Command.play(streamId, options));
-                            channel.write(Control.setBuffer(streamId, 0));
-                        }
-                    } else {
-                        logger.warn("un-handled server result for: {}", resultFor);
-                    }
-                } else if(name.equals("onStatus")) {
-                    final Map<String, Object> temp = (Map) command.getArg(0);
-                    final String code = (String) temp.get("code");
-                    logger.info("onStatus code: {}", code);
-                    if (code.equals("NetStream.Failed") // TODO cleanup
-                            || code.equals("NetStream.Play.Failed")
-                            || code.equals("NetStream.Play.Stop")
-                            || code.equals("NetStream.Play.StreamNotFound")) {
-                        logger.info("disconnecting, code: {}, bytes read: {}", code, bytesRead);
-                        channel.close();
-                        return;
-                    }
-                    if(code.equals("NetStream.Publish.Start")
-                            && publisher != null && !publisher.isStarted()) {
-                            publisher.start(channel, options.getStart(),
-                                    options.getLength(), new ChunkSize(4096));
-                        return;
-                    }
-                    if (publisher != null && code.equals("NetStream.Unpublish.Success")) {
-                        logger.info("unpublish success, closing channel");
-                        ChannelFuture future = channel.write(Command.closeStream(streamId));
-                        future.addListener(ChannelFutureListener.CLOSE);
-                        return;
-                    }
-                } else if(name.equals("close")) {
-                    logger.info("server called close, closing channel");
-                    channel.close();
-                    return;
-                } else if(name.equals("_error")) {
-                    logger.error("closing channel, server resonded with error: {}", command);
-                    channel.close();
-                    return;
-                } else {
-                    logger.warn("ignoring server command: {}", command);
-                }
-                break;
-            case BYTES_READ:
-                logger.info("ack from server: {}", message);
-                break;
-            case WINDOW_ACK_SIZE:
-                WindowAckSize was = (WindowAckSize) message;                
-                if(was.getValue() != bytesReadWindow) {
-                    channel.write(SetPeerBw.dynamic(bytesReadWindow));
-                }                
-                break;
-            case SET_PEER_BW:
-                SetPeerBw spb = (SetPeerBw) message;                
-                if(spb.getValue() != bytesWrittenWindow) {
-                    channel.write(new WindowAckSize(bytesWrittenWindow));
-                }
-                break;
-            case SHARED_OBJECT_AMF0:
-            case SHARED_OBJECT_AMF3:
-            	logger.debug("SOAMF");
-            	onSharedObject(channel, (SharedObjectMessage) message);
-            	break;
-            default:
-            logger.info("ignoring rtmp message: {}", message);
+	        case CHUNK_SIZE: onChunkSize(channel, message); break; 
+	        case CONTROL: onControl(channel, (Control) message); break;
+	        case METADATA_AMF0:
+	        case METADATA_AMF3: onMetadata(channel, (Metadata) message); break;
+	        case AUDIO:
+	        case VIDEO:
+	        case AGGREGATE: onMultimedia(channel, message); break;
+	        case COMMAND_AMF0:
+	        case COMMAND_AMF3: onCommand(channel, (Command) message); break;
+	        case BYTES_READ: onBytesRead(channel, message); break;
+	        case WINDOW_ACK_SIZE: onWindowAckSize(channel, (WindowAckSize) message); break;
+	        case SET_PEER_BW: onSetPeerBw(channel, (SetPeerBw) message); break;
+	        case SHARED_OBJECT_AMF0:
+	        case SHARED_OBJECT_AMF3: onSharedObject(channel, (SharedObjectMessage) message); break;
+	        default: onUnknown(channel, message); break;
+	    }
+        // don't put together received messages handling and publishing stuff
+//	    if(publisher != null && publisher.isStarted()) { // TODO better state machine
+//	        publisher.fireNext(channel, 0);
+//	    }		
+	}
+
+	protected void onUnknown(Channel channel, RtmpMessage message) {
+        logger.info("ignoring rtmp message: {}", message);
+	}
+
+	protected void onSetPeerBw(Channel channel, SetPeerBw spb) {
+        if(spb.getValue() != bytesWrittenWindow) {
+            channel.write(new WindowAckSize(bytesWrittenWindow));
         }
-        if(publisher != null && publisher.isStarted()) { // TODO better state machine
-            publisher.fireNext(channel, 0);
+	}
+
+	protected void onWindowAckSize(Channel channel, WindowAckSize was) {
+        if(was.getValue() != bytesReadWindow) {
+            channel.write(SetPeerBw.dynamic(bytesReadWindow));
+        }                
+	}
+
+	protected void onBytesRead(Channel channel, RtmpMessage message) {
+        logger.debug("ack from server: {}", message);
+	}
+
+	protected void onCommand(Channel channel, Command command) {
+        String name = command.getName();
+        logger.debug("server command: {}", name);
+        if(name.equals("_result")) {
+            String resultFor = transactionToCommandMap.get(command.getTransactionId());
+            if (resultFor == null) {
+            	logger.warn("result for method without tracked transaction");
+            } else {
+            	onCommandResult(channel, command, resultFor);
+            }
+        } else if(name.equals("onStatus")) {
+            @SuppressWarnings("unchecked")
+			final Map<String, Object> args = (Map<String, Object>) command.getArg(0);
+            onCommandStatus(channel, command, args);
+        } else if(name.equals("close")) {
+            logger.info("server called close, closing channel");
+            channel.close();
+        } else if(name.equals("_error")) {
+            logger.error("closing channel, server resonded with error: {}", command);
+            channel.close();
+        } else {
+        	onCommandCustom(channel, command, name);
         }
     }
+
+	protected void onCommandCustom(Channel channel, Command command, String name) {
+        logger.warn("ignoring server command: {}", command);
+	}
+
+	protected void onCommandStatus(Channel channel, Command command,
+			Map<String, Object> args) {
+        final String code = (String) args.get("code");
+        final String level = (String) args.get("level");
+        final String description = (String) args.get("description");
+        final String application = (String) args.get("application");
+        final String messageStr = level + " onStatus message, code: " + code + ", description: " + description + ", application: " + application;
+        
+        // http://help.adobe.com/en_US/FlashPlatform/reference/actionscript/3/flash/events/NetStatusEvent.html
+        if (level.equals("status")) {
+        	logger.info(messageStr);
+            if (code.equals("NetStream.Publish.Start")
+            		&& publisher != null && !publisher.isStarted()) {
+        		logger.debug("starting the publisher after NetStream.Publish.Start");
+            	publisher.start(channel, options.getStart(), options.getLength(), new ChunkSize(4096));
+            } else if (code.equals("NetStream.Unpublish.Success")
+            		&& publisher != null) {
+                logger.info("unpublish success, closing channel");
+                ChannelFuture future = channel.write(Command.closeStream(streamId));
+                future.addListener(ChannelFutureListener.CLOSE);
+            } else if (code.equals("NetStream.Play.Stop")) {
+            	channel.close();
+            }
+        } else if (level.equals("warning")) {
+        	logger.warn(messageStr);
+        	if (code.equals("NetStream.Play.InsufficientBW")) {
+                ChannelFuture future = channel.write(Command.closeStream(streamId));
+                future.addListener(ChannelFutureListener.CLOSE);
+        	}
+        } else if (level.equals("error")) {
+        	logger.error(messageStr);
+            channel.close();
+        }
+	}
+
+	protected void onCommandResult(Channel channel, Command command,
+			String resultFor) {
+        logger.info("result for method call: {}", resultFor);
+        if (resultFor.equals("connect")) {
+            writeCommandExpectingResult(channel, Command.createStream());
+        } else if (resultFor.equals("createStream")) {
+            streamId = ((Double) command.getArg(0)).intValue();
+            logger.debug("streamId to use: {}", streamId);
+            if(options.getPublishType() != null) { // TODO append, record                            
+                RtmpReader reader;
+                if(options.getFileToPublish() != null) {
+                    reader = RtmpPublisher.getReader(options.getFileToPublish());
+                } else {
+                    reader = options.getReaderToPublish();
+                }
+                if(options.getLoop() > 1) {
+                    reader = new LoopedReader(reader, options.getLoop());
+                }
+                // \TODO check the "useSharedTimer" argument
+                publisher = new RtmpPublisher(reader, streamId, options.getBuffer(), true, false) {
+                    @Override protected RtmpMessage[] getStopMessages(long timePosition) {
+                        return new RtmpMessage[]{Command.unpublish(streamId)};
+                    }
+                };                            
+                channel.write(Command.publish(streamId, options));
+                return;
+            } else {
+                writer = options.getWriterToSave();
+//                if(writer == null) {
+//                    writer = new FlvWriter(options.getStart(), options.getSaveAs());
+//                }
+                channel.write(Command.play(streamId, options));
+                channel.write(Control.setBuffer(streamId, 0));
+            }
+        } else {
+            logger.warn("un-handled server result for: {}", resultFor);
+        }
+    }
+
+	protected void onMultimedia(Channel channel, RtmpMessage message) {
+        if (writer != null)
+        	writer.write(message);
+        bytesRead += message.getHeader().getSize();
+        if((bytesRead - bytesReadLastSent) > bytesReadWindow) {
+            logger.debug("sending bytes read ack {}", bytesRead);
+            bytesReadLastSent = bytesRead;
+            channel.write(new BytesRead(bytesRead));
+        }
+	}
+
+	protected void onMetadata(Channel channel, Metadata metadata) {
+        if(metadata.getName().equals("onMetaData") && writer != null) {
+            logger.debug("writing 'onMetaData': {}", metadata);
+            writer.write(metadata);
+        } else {
+            logger.debug("ignoring metadata: {}", metadata);
+        }
+	}
+
+	protected void onControl(Channel channel, Control control) {
+        logger.debug("control: {}", control);
+        switch(control.getType()) {
+            case PING_REQUEST:
+                final int time = control.getTime();
+                logger.debug("server ping: {}", time);
+                Control pong = Control.pingResponse(time);
+                logger.debug("sending ping response: {}", pong);
+                if (channel.isWritable())
+                	channel.write(pong);
+                break;
+            case SWFV_REQUEST:
+                if(swfvBytes == null) {
+                    logger.warn("swf verification not initialized!" 
+                        + " not sending response, server likely to stop responding / disconnect");
+                } else {
+                    Control swfv = Control.swfvResponse(swfvBytes);
+                    logger.info("sending swf verification response: {}", swfv);
+                    channel.write(swfv);
+                }
+                break;
+            case STREAM_BEGIN:
+                if(publisher != null && !publisher.isStarted()) {
+                    publisher.start(channel, options.getStart(),
+                            options.getLength(), new ChunkSize(4096));
+                    return;
+                }
+                if(streamId !=0) {
+                    channel.write(Control.setBuffer(streamId, options.getBuffer()));
+                }
+                break;
+            default:
+                logger.debug("ignoring control message: {}", control);
+        }
+	}
+
+	protected void onChunkSize(Channel channel, RtmpMessage message) {
+		// handled by decoder
+	}
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e) {
