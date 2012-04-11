@@ -19,14 +19,16 @@
 
 package com.flazr.rtmp.message;
 
-import com.flazr.amf.Amf0Object;
-import com.flazr.rtmp.RtmpHeader;
-import com.flazr.rtmp.client.ClientOptions;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+
 import org.jboss.netty.buffer.ChannelBuffer;
+
+import com.flazr.amf.Amf0Object;
+import com.flazr.rtmp.RtmpHeader;
+import com.flazr.rtmp.client.ClientOptions;
 
 public abstract class Command extends AbstractMessage {
     
@@ -229,15 +231,15 @@ public abstract class Command extends AbstractMessage {
         return command;
     }
     
-    public static Command publish(int streamId, ClientOptions options) { // TODO
+    public static Command publish(int streamId, int channelId, ClientOptions options) { // TODO
         Command command = new CommandAmf0("publish", null, options.getStreamName(),
                 options.getPublishType().asString());
-        command.header.setChannelId(8);
+        command.header.setChannelId(channelId);
         command.header.setStreamId(streamId);
         return command;
     }
     
-    private static Command publishStatus(String code, String streamName, String clientId, Pair ... pairs) {
+	private static Command publishStatus(String code, String streamName, String clientId, Pair ... pairs) {
         Amf0Object status = onStatus(OnStatus.STATUS,
                 code, null, streamName,
                 pair("details", streamName),

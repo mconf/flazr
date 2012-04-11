@@ -19,15 +19,15 @@
 
 package com.flazr.rtmp.client;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelFuture;
-import org.jboss.netty.channel.ChannelFutureListener;
 import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.ChannelPipelineCoverage;
 import org.jboss.netty.channel.ChannelStateEvent;
@@ -40,12 +40,12 @@ import org.red5.server.so.SharedObjectMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.flazr.io.flv.FlvWriter;
 import com.flazr.rtmp.LoopedReader;
 import com.flazr.rtmp.RtmpMessage;
 import com.flazr.rtmp.RtmpPublisher;
 import com.flazr.rtmp.RtmpReader;
 import com.flazr.rtmp.RtmpWriter;
-import com.flazr.rtmp.message.BytesRead;
 import com.flazr.rtmp.message.ChunkSize;
 import com.flazr.rtmp.message.Command;
 import com.flazr.rtmp.message.Control;
@@ -57,9 +57,9 @@ import com.flazr.util.Utils;
 
 @SuppressWarnings("deprecation")
 @ChannelPipelineCoverage("one")
-public class ClientHandler extends SimpleChannelUpstreamHandler {
+public class MultiStreamHandler extends SimpleChannelUpstreamHandler {
 
-    protected static final Logger logger = LoggerFactory.getLogger(ClientHandler.class);
+    protected static final Logger logger = LoggerFactory.getLogger(MultiStreamHandler.class);
 
     private int transactionId = 1;
     protected Map<Integer, String> transactionToCommandMap;
@@ -74,13 +74,25 @@ public class ClientHandler extends SimpleChannelUpstreamHandler {
     protected RtmpWriter writer;
 
     protected int bytesReadWindow = 2500000;
-    protected long bytesRead;
-    protected long bytesReadLastSent;    
     protected int bytesWrittenWindow = 2500000;
-    
-    public RtmpPublisher publisher;
-    public int streamId;    
 
+	protected List<Stream> publishStreamList = new ArrayList<Stream>();
+	protected boolean connected;    
+
+	protected class Stream {
+		public static final int WAITING_FOR_CREATE_COMMAND = 1;
+		public static final int WAITING_FOR_BEGIN_COMMAND = 2;
+		public static final int WAITING_FOR_CREATE_RESULT = 3;
+		public static final int STARTED = 4;
+		public static final int CLOSED = 0;
+		
+		public String streamName;
+		public int streamId;
+		public int state;
+		public RtmpPublisher publisher;
+		public RtmpReader reader;
+	}
+	
     private Map<Integer, Integer> streamChannel = new HashMap<Integer, Integer>();
 
     protected synchronized int holdChannel(int streamId) {
@@ -143,7 +155,7 @@ public class ClientHandler extends SimpleChannelUpstreamHandler {
         logger.info("set swf verification bytes: {}", Utils.toHex(swfvBytes));        
     }
 
-    public ClientHandler(ClientOptions options) {
+    public MultiStreamHandler(ClientOptions options) {
         this.options = options;
         transactionToCommandMap = new HashMap<Integer, String>();        
     }
@@ -154,6 +166,11 @@ public class ClientHandler extends SimpleChannelUpstreamHandler {
         transactionToCommandMap.put(id, command.getName());
         logger.info("sending command (expecting result): {}", command);
         channel.write(command);
+    }
+    
+    public void writeCommand(Channel channel, RtmpMessage message) {
+        logger.info("sending command (without expecting result): {}", message);
+    	channel.write(message);
     }
 
     @Override
@@ -174,17 +191,23 @@ public class ClientHandler extends SimpleChannelUpstreamHandler {
         if(writer != null) {
             writer.close();
         }
-        if(publisher != null) {
-            publisher.close();
-        }
+		for (Stream stream : publishStreamList) {
+			if (stream.publisher != null)
+				stream.publisher.close();
+		}
         super.channelClosed(ctx, e);
     }
     
 	@Override
 	public void messageReceived(ChannelHandlerContext ctx, MessageEvent me) {
-    	if(publisher != null && publisher.handle(me)) {
-           	return;
-        }
+		boolean handledByPublisher = false;
+		for (Stream stream : publishStreamList) {
+			if (stream.publisher != null && stream.publisher.handle(me))
+				handledByPublisher = true;
+		}
+		if (handledByPublisher)
+			return;
+		
         final Channel channel = me.getChannel();
         final RtmpMessage message = (RtmpMessage) me.getMessage();
         switch(message.getHeader().getMessageType()) {
@@ -207,7 +230,15 @@ public class ClientHandler extends SimpleChannelUpstreamHandler {
         // don't put together received messages handling and publishing stuff
 //	    if(publisher != null && publisher.isStarted()) { // TODO better state machine
 //	        publisher.fireNext(channel, 0);
-//	    }		
+//	    }
+        if (connected) {
+	        for (Stream stream : publishStreamList) {
+	        	if (stream.state == Stream.WAITING_FOR_CREATE_COMMAND) {
+	                stream.state = Stream.WAITING_FOR_CREATE_RESULT;
+	                writeCommandExpectingResult(channel, Command.createStream());
+	        	}
+	        }
+        }
 	}
 
 	protected void onUnknown(Channel channel, RtmpMessage message) {
@@ -215,19 +246,21 @@ public class ClientHandler extends SimpleChannelUpstreamHandler {
 	}
 
 	protected void onSetPeerBw(Channel channel, SetPeerBw spb) {
+		logger.debug("set peer bandwidth: " + spb);
         if(spb.getValue() != bytesWrittenWindow) {
-            channel.write(new WindowAckSize(bytesWrittenWindow));
+            writeCommand(channel, new WindowAckSize(bytesWrittenWindow));
         }
 	}
 
 	protected void onWindowAckSize(Channel channel, WindowAckSize was) {
+		logger.debug("window ack size: " + was);
         if(was.getValue() != bytesReadWindow) {
-            channel.write(SetPeerBw.dynamic(bytesReadWindow));
+            writeCommand(channel, SetPeerBw.dynamic(bytesReadWindow));
         }                
 	}
 
 	protected void onBytesRead(Channel channel, RtmpMessage message) {
-        logger.debug("ack from server: {}", message);
+//        logger.debug("ack from server: {}", message);
 	}
 
 	protected void onCommand(Channel channel, Command command) {
@@ -266,82 +299,118 @@ public class ClientHandler extends SimpleChannelUpstreamHandler {
         final String description = (String) args.get("description");
         final String application = (String) args.get("application");
         final String messageStr = level + " onStatus message, code: " + code + ", description: " + description + ", application: " + application;
+        final int streamId = ((Double) args.get("clientid")).intValue();
+        Stream stream = getStreamById(streamId);
+        
+		logger.debug("=========================> onCommandStatus Command: " + command);
+		logger.debug("=========================> streamId: " + streamId);
+		logger.debug("=========================> publishStreamList.size(): " + publishStreamList.size());
+		logger.debug("=========================> streamName: " + stream.streamName);
         
         // http://help.adobe.com/en_US/FlashPlatform/reference/actionscript/3/flash/events/NetStatusEvent.html
         if (level.equals("status")) {
         	logger.info(messageStr);
             if (code.equals("NetStream.Publish.Start")
-            		&& publisher != null && !publisher.isStarted()) {
+            		&& stream != null && stream.publisher != null && !stream.publisher.isStarted()) {
         		logger.debug("starting the publisher after NetStream.Publish.Start");
-            	publisher.start(channel, options.getStart(), options.getLength(), new ChunkSize(4096));
+            	stream.publisher.start(channel, options.getStart(), options.getLength(), new ChunkSize(4096));
+            	stream.state = Stream.STARTED;
             } else if (code.equals("NetStream.Unpublish.Success")
-            		&& publisher != null) {
+            		&& stream != null && stream.publisher != null) {
                 logger.info("unpublish success, closing channel");
-                ChannelFuture future = channel.write(Command.closeStream(streamId));
-                future.addListener(ChannelFutureListener.CLOSE);
+                closeStream(channel, stream);
+//                ChannelFuture future = writeCommand(channel, Command.closeStream(streamId));
+//                future.addListener(ChannelFutureListener.CLOSE);
             } else if (code.equals("NetStream.Play.Stop")) {
-            	channel.close();
+            	closeStream(channel, stream);
+//            	channel.close();
             }
         } else if (level.equals("warning")) {
         	logger.warn(messageStr);
         	if (code.equals("NetStream.Play.InsufficientBW")) {
-                ChannelFuture future = channel.write(Command.closeStream(streamId));
-                future.addListener(ChannelFutureListener.CLOSE);
+        		closeStream(channel, stream);
+//                ChannelFuture future = writeCommand(channel, Command.closeStream(streamId));
+//                future.addListener(ChannelFutureListener.CLOSE);
         	}
         } else if (level.equals("error")) {
         	logger.error(messageStr);
-            channel.close();
+//            channel.close();
         }
+	}
+
+	private void closeStream(Channel channel, Stream stream) {
+        writeCommand(channel, Command.closeStream(stream.streamId));
+        stream.state = Stream.CLOSED;
 	}
 
 	protected void onCommandResult(Channel channel, Command command,
 			String resultFor) {
         logger.info("result for method call: {}", resultFor);
         if (resultFor.equals("connect")) {
-            writeCommandExpectingResult(channel, Command.createStream());
+        	connected = true;
         } else if (resultFor.equals("createStream")) {
-            streamId = ((Double) command.getArg(0)).intValue();
-            logger.debug("streamId to use: {}", streamId);
-            if(options.getPublishType() != null) { // TODO append, record                            
-                RtmpReader reader;
-                if(options.getFileToPublish() != null) {
-                    reader = RtmpPublisher.getReader(options.getFileToPublish());
-                } else {
-                    reader = options.getReaderToPublish();
-                }
-                if(options.getLoop() > 1) {
-                    reader = new LoopedReader(reader, options.getLoop());
-                }
-                // \TODO check the "useSharedTimer" argument
-                publisher = new RtmpPublisher(reader, streamId, options.getBuffer(), true, false) {
-                    @Override protected RtmpMessage[] getStopMessages(long timePosition) {
-                        return new RtmpMessage[]{Command.unpublish(streamId)};
-                    }
-                };                            
-                channel.write(Command.publish(streamId, holdChannel(streamId), options));
-                return;
-            } else {
-                writer = options.getWriterToSave();
-//                if(writer == null) {
-//                    writer = new FlvWriter(options.getStart(), options.getSaveAs());
-//                }
-                channel.write(Command.play(streamId, options));
-                channel.write(Control.setBuffer(streamId, 0));
-            }
+        	onCommandResultCreateStream(channel, command);
         } else {
             logger.warn("un-handled server result for: {}", resultFor);
+        }
+    }
+
+	protected void onCommandResultCreateStream(Channel channel, Command command) {
+        final int streamId = ((Double) command.getArg(0)).intValue();
+        logger.debug("streamId to use: {}", streamId);
+        if(options.getPublishType() != null) { // TODO append, record        
+        	
+        	Stream stream = getStreamByState(Stream.WAITING_FOR_CREATE_RESULT);
+        	if (stream == null) {
+        		logger.error("Inconsistent state - received a create stream result, but there's no stream to publish");
+        		return;
+        	}
+        	
+            RtmpReader reader;
+            if(options.getFileToPublish() != null) {
+                reader = RtmpPublisher.getReader(options.getFileToPublish());
+            } else {
+                reader = stream.reader;
+            }
+            if(options.getLoop() > 1) {
+                reader = new LoopedReader(reader, options.getLoop());
+            }
+            // \TODO check the "useSharedTimer" argument
+            stream.publisher = new RtmpPublisher(reader, streamId, options.getBuffer(), false, false) {
+                @Override protected RtmpMessage[] getStopMessages(long timePosition) {
+                    return new RtmpMessage[]{Command.unpublish(streamId)};
+                }
+            };
+            ClientOptions tmpOptions = new ClientOptions();
+            tmpOptions.setStreamName(stream.streamName);
+            tmpOptions.setPublishType(options.getPublishType());
+            stream.streamId = streamId;
+            stream.state = Stream.WAITING_FOR_BEGIN_COMMAND;
+            
+            Command publish = Command.publish(streamId, holdChannel(streamId), tmpOptions);
+            stream.publisher.setChannelId(publish.getHeader().getChannelId());
+            writeCommand(channel, publish);
+            return;
+        } else {
+            writer = options.getWriterToSave();
+            if(writer == null && options.getSaveAs() != null) {
+                writer = new FlvWriter(options.getStart(), options.getSaveAs());
+            }
+            writeCommand(channel, Command.play(streamId, options));
+            writeCommand(channel, Control.setBuffer(streamId, 0));
         }
     }
 
 	protected void onMultimedia(Channel channel, RtmpMessage message) {
         if (writer != null)
         	writer.write(message);
-        bytesRead += message.getHeader().getSize();
-        if((bytesRead - bytesReadLastSent) > bytesReadWindow) {
-            logger.debug("sending bytes read ack {}", bytesRead);
-            bytesReadLastSent = bytesRead;
-            channel.write(new BytesRead(bytesRead));
-        }
+		logger.debug("=========================> onMultimedia RtmpMessage: " + message);
+//        bytesRead += message.getHeader().getSize();
+//        if((bytesRead - bytesReadLastSent) > bytesReadWindow) {
+//            logger.debug("sending bytes read ack {}", bytesRead);
+//            bytesReadLastSent = bytesRead;
+//            writeCommand(channel, new BytesRead(bytesRead));
+//        }
 	}
 
 	protected void onMetadata(Channel channel, Metadata metadata) {
@@ -353,16 +422,31 @@ public class ClientHandler extends SimpleChannelUpstreamHandler {
         }
 	}
 
+	protected Stream getStreamById(int id) {
+		for (Stream s : publishStreamList)
+			if (s.streamId == id)
+				return s;
+		return null;
+	}
+	
+	protected Stream getStreamByState(int state) {
+		for (Stream s : publishStreamList)
+			if (s.state == state)
+				return s;
+		return null;
+	}
+	
 	protected void onControl(Channel channel, Control control) {
-        logger.debug("control: {}", control);
+		if (control.getType() != Control.Type.PING_REQUEST)
+			logger.debug("control: {}", control);
         switch(control.getType()) {
             case PING_REQUEST:
                 final int time = control.getTime();
-                logger.debug("server ping: {}", time);
                 Control pong = Control.pingResponse(time);
-                logger.debug("sending ping response: {}", pong);
+//                logger.debug("server ping: {}", time);
+//                logger.debug("sending ping response: {}", pong);
                 if (channel.isWritable())
-                	channel.write(pong);
+                	writeCommand(channel, pong);
                 break;
             case SWFV_REQUEST:
                 if(swfvBytes == null) {
@@ -371,17 +455,21 @@ public class ClientHandler extends SimpleChannelUpstreamHandler {
                 } else {
                     Control swfv = Control.swfvResponse(swfvBytes);
                     logger.info("sending swf verification response: {}", swfv);
-                    channel.write(swfv);
+                    writeCommand(channel, swfv);
                 }
                 break;
             case STREAM_BEGIN:
-                if(publisher != null && !publisher.isStarted()) {
-                    publisher.start(channel, options.getStart(),
-                            options.getLength(), new ChunkSize(4096));
+                int streamId = control.getStreamId();
+                Stream stream = getStreamById(streamId);
+                if (stream != null && stream.publisher != null && !stream.publisher.isStarted()) {
+                    stream.publisher.start(channel, options.getStart(),
+                        options.getLength(), new ChunkSize(4096));
+                    stream.state = Stream.STARTED;
                     return;
                 }
-                if(streamId !=0) {
-                    channel.write(Control.setBuffer(streamId, options.getBuffer()));
+                // streamId == 0 is not a real stream
+                if (streamId != 0) {
+                    writeCommand(channel, Control.setBuffer(streamId, options.getBuffer()));
                 }
                 break;
             default:
@@ -398,4 +486,13 @@ public class ClientHandler extends SimpleChannelUpstreamHandler {
         ChannelUtils.exceptionCaught(e);
     }    
 
+	public void addPublishStream(String streamName, RtmpReader reader) {
+		logger.debug("=========================> Adding a stream to the publishStreamList");
+		Stream stream = new Stream();
+		stream.streamName = streamName;
+		stream.state = Stream.WAITING_FOR_CREATE_COMMAND;
+		stream.reader = reader;
+		publishStreamList.add(stream);
+	}
+    
 }
