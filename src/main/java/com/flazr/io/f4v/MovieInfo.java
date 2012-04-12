@@ -49,7 +49,7 @@ public class MovieInfo {
     }
 
     public double getDuration() {
-        return mvhd.getDuration() / mvhd.getTimeScale();
+        return mvhd.getDuration() / (double) mvhd.getTimeScale();
     }
 
     private void initSamples() {
