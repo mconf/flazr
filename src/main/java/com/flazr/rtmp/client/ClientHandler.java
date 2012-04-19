@@ -312,8 +312,10 @@ public class ClientHandler extends SimpleChannelUpstreamHandler {
                 if(options.getLoop() > 1) {
                     reader = new LoopedReader(reader, options.getLoop());
                 }
-                // \TODO check the "useSharedTimer" argument
-                publisher = new RtmpPublisher(reader, streamId, options.getBuffer(), true, false) {
+                // the use of useSharedTimer=true results in a memory leak on the shared timer
+                // \TODO remove this option from RtmpPublisher - it probably should never use
+                // a shared timer
+                publisher = new RtmpPublisher(reader, streamId, options.getBuffer(), false, false) {
                     @Override protected RtmpMessage[] getStopMessages(long timePosition) {
                         return new RtmpMessage[]{Command.unpublish(streamId)};
                     }
@@ -354,13 +356,15 @@ public class ClientHandler extends SimpleChannelUpstreamHandler {
 	}
 
 	protected void onControl(Channel channel, Control control) {
-        logger.debug("control: {}", control);
+		if (control.getType() != Control.Type.PING_REQUEST)
+			logger.debug("control: {}", control);
         switch(control.getType()) {
             case PING_REQUEST:
                 final int time = control.getTime();
-                logger.debug("server ping: {}", time);
                 Control pong = Control.pingResponse(time);
-                logger.debug("sending ping response: {}", pong);
+                // we don't want to print two boring messages every second
+//                logger.debug("server ping: {}", time);
+//                logger.debug("sending ping response: {}", pong);
                 if (channel.isWritable())
                 	channel.write(pong);
                 break;
