@@ -43,8 +43,8 @@
     
     <repositories>
         <repository>
-            <id>jboss</id>
-            <url>http://repository.jboss.org/nexus/content/groups/public/</url>
+            <id>repository.jboss.org</id>
+            <url>https://repository.jboss.org/nexus/content/repositories/releases/</url>
             <snapshots>
                 <enabled>false</enabled>
             </snapshots>
@@ -55,7 +55,7 @@
         <dependency>
             <groupId>org.jboss.netty</groupId>
             <artifactId>netty</artifactId>
-            <version>3.2.6.Final</version>
+            <version>3.2.7.Final</version>
             <scope>compile</scope>
         </dependency>
 		<dependency>
