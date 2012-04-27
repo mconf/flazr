@@ -140,6 +140,7 @@ public class Utils {
             while ((s = reader.readLine()) != null) {
                 sb.append(s);
             }
+            reader.close();
             return sb;
         } catch (Exception e) {
             throw new RuntimeException(e);

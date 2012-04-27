@@ -19,10 +19,8 @@
 
 package com.flazr.rtmp;
 
-import com.flazr.io.f4v.F4vReader;
-import com.flazr.io.flv.FlvReader;
-import com.flazr.rtmp.server.RtmpServer;
 import java.util.concurrent.TimeUnit;
+
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelFuture;
 import org.jboss.netty.channel.ChannelFutureListener;
@@ -34,6 +32,10 @@ import org.jboss.netty.util.Timer;
 import org.jboss.netty.util.TimerTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.flazr.io.f4v.F4vReader;
+import com.flazr.io.flv.FlvReader;
+import com.flazr.rtmp.server.RtmpServer;
 
 public abstract class RtmpPublisher {
 
@@ -55,19 +57,25 @@ public abstract class RtmpPublisher {
     private int bufferDuration;
     
     public Channel channel;
+	private int channelId = 8;
 
     public static class Event {
 
         private final int conversationId;
+        private final int streamId;
 
-        public Event(final int conversationId) {
+        public Event(final int conversationId, final int streamId) {
             this.conversationId = conversationId;
+            this.streamId = streamId;
         }
 
         public int getConversationId() {
             return conversationId;
         }
 
+        public int getStreamId() {
+        	return streamId;
+        }
     }
 
     public RtmpPublisher(final RtmpReader reader, final int streamId, final int bufferDuration, 
@@ -111,6 +119,9 @@ public abstract class RtmpPublisher {
     public boolean handle(final MessageEvent me) {        
         if(me.getMessage() instanceof Event) {
             final Event pe = (Event) me.getMessage();
+            if(pe.streamId != streamId) {
+            	return false;
+            }
             if(pe.conversationId != currentConversationId) {
                 logger.debug("stopping obsolete conversation id: {}, current: {}",
                         pe.getConversationId(), currentConversationId);
@@ -191,6 +202,7 @@ public abstract class RtmpPublisher {
         }
         timePosition = header.getTime();
         header.setStreamId(streamId);
+        header.setChannelId(channelId);
         final ChannelFuture future = channel.write(message);
         future.addListener(new ChannelFutureListener() {
             @Override public void operationComplete(final ChannelFuture cf) {
@@ -205,7 +217,7 @@ public abstract class RtmpPublisher {
     }
 
     public void fireNext(final Channel channel, final long delay) {
-        final Event readyForNext = new Event(currentConversationId);
+        final Event readyForNext = new Event(currentConversationId, streamId);
         if(delay > timerTickSize) {
             timer.newTimeout(new TimerTask() {
                 @Override public void run(Timeout timeout) {
@@ -247,5 +259,9 @@ public abstract class RtmpPublisher {
     }
 
     protected abstract RtmpMessage[] getStopMessages(long timePosition);
+
+	public void setChannelId(int channelId) {
+		this.channelId  = channelId;
+	}
 
 }

@@ -313,7 +313,7 @@ public class ServerHandler extends SimpleChannelHandler {
             publisher = new RtmpPublisher(reader, streamId, bufferDuration, true, aggregateModeEnabled) {
                 @Override protected RtmpMessage[] getStopMessages(long timePosition) {
                     return new RtmpMessage[] {
-                        Metadata.onPlayStatus(timePosition / 1000, bytesWritten),
+                        Metadata.onPlayStatus(timePosition / (double) 1000, bytesWritten),
                         Command.playStop(playName, clientId),
                         Control.streamEof(streamId)
                     };

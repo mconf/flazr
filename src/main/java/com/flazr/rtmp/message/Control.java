@@ -29,7 +29,8 @@ import org.slf4j.LoggerFactory;
 
 public class Control extends AbstractMessage {
 
-    private static final Logger logger = LoggerFactory.getLogger(Control.class);
+    @SuppressWarnings("unused")
+	private static final Logger logger = LoggerFactory.getLogger(Control.class);
 
     public static enum Type implements ValueToEnum.IntValue {
         
@@ -66,7 +67,7 @@ public class Control extends AbstractMessage {
 
     private Type type;
     private int streamId;
-    private int bufferLength;
+	private int bufferLength;
     private int time;
     private byte[] bytes;
 
@@ -234,5 +235,9 @@ public class Control extends AbstractMessage {
         }
         return sb.toString();
     }
+
+    public int getStreamId() {
+		return streamId;
+	}
 
 }
