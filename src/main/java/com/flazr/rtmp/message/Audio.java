@@ -58,5 +58,9 @@ public class Audio extends DataMessage {
     public MessageType getMessageType() {
         return MessageType.AUDIO;
     }
+    
+	public byte[] getData() {
+		return data.toByteBuffer().array();
+	}
 
 }
