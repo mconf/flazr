@@ -324,9 +324,9 @@ public class ClientHandler extends SimpleChannelUpstreamHandler {
                 return;
             } else {
                 writer = options.getWriterToSave();
-//                if(writer == null) {
+                // do not create a writer if it wasn't set on the options
+//                if(writer == null)
 //                    writer = new FlvWriter(options.getStart(), options.getSaveAs());
-//                }
                 channel.write(Command.play(streamId, options));
                 channel.write(Control.setBuffer(streamId, 0));
             }

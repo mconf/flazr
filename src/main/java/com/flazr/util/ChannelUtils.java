@@ -20,7 +20,10 @@
 package com.flazr.util;
 
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.channels.ClosedChannelException;
+
 import org.jboss.netty.channel.ExceptionEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,12 +34,20 @@ public class ChannelUtils {
 
     public static void exceptionCaught(final ExceptionEvent e) {
         if (e.getCause() instanceof ClosedChannelException) {
-            logger.info("exception: {}", e);
+            logger.info("exception: {}", e.toString());
         } else if(e.getCause() instanceof IOException) {
             logger.info("exception: {}", e.getCause().getMessage());
         } else {
-            logger.warn("exception: {}", e.getCause());
+            logger.warn("exception: {}", e.getCause().toString());
         }
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        e.getCause().printStackTrace(pw);
+        logger.debug("exception: {}", e.toString());
+        logger.debug("cause: {}", e.getCause().toString());
+        logger.debug("message: {}", e.getCause().getMessage());
+        logger.debug("stacktrace: {}", sw.toString());
+        
         if(e.getChannel().isOpen()) {
             e.getChannel().close();
         }
