@@ -19,6 +19,8 @@
 
 package com.flazr.rtmp.message;
 
+import java.nio.ByteOrder;
+
 import com.flazr.rtmp.RtmpHeader;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
@@ -59,8 +61,13 @@ public class Audio extends DataMessage {
         return MessageType.AUDIO;
     }
     
-	public byte[] getData() {
+	public byte[] getByteArray() {
 		return data.toByteBuffer().array();
 	}
 
+	public short[] getShortArray() {
+		short[] shortArray = new short[data.array().length / 2];
+		data.toByteBuffer().order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(shortArray);
+		return shortArray;
+	}
 }
