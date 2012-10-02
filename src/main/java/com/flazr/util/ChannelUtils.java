@@ -19,10 +19,8 @@
 
 package com.flazr.util;
 
-import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.nio.channels.ClosedChannelException;
 
 import org.jboss.netty.channel.ExceptionEvent;
 import org.slf4j.Logger;
@@ -33,24 +31,19 @@ public class ChannelUtils {
     private static final Logger logger = LoggerFactory.getLogger(ChannelUtils.class);
 
     public static void exceptionCaught(final ExceptionEvent e) {
-        if (e.getCause() instanceof ClosedChannelException) {
-            logger.info("exception: {}", e.toString());
-        } else if(e.getCause() instanceof IOException) {
-            logger.info("exception: {}", e.getCause().getMessage());
-        } else {
-            logger.warn("exception: {}", e.getCause().toString());
+        logger.warn("exception: {}", e.toString());
+        if (e.getCause() != null) {
+            StringWriter sw = new StringWriter();
+            PrintWriter pw = new PrintWriter(sw);
+            e.getCause().printStackTrace(pw);
+            logger.warn("cause: {}", e.getCause().toString());
+            logger.warn("message: {}", e.getCause().getMessage());
+            logger.warn("stacktrace: {}", sw.toString());
         }
-        StringWriter sw = new StringWriter();
-        PrintWriter pw = new PrintWriter(sw);
-        e.getCause().printStackTrace(pw);
-        logger.debug("exception: {}", e.toString());
-        logger.debug("cause: {}", e.getCause().toString());
-        logger.debug("message: {}", e.getCause().getMessage());
-        logger.debug("stacktrace: {}", sw.toString());
-        
-        if(e.getChannel().isOpen()) {
-            e.getChannel().close();
-        }
+        // do not close the channel on every exception
+//        if(e.getChannel().isOpen()) {
+//            e.getChannel().close();
+//        }
     }
 
 }

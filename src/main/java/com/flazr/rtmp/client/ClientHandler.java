@@ -287,6 +287,7 @@ public class ClientHandler extends SimpleChannelUpstreamHandler {
         	if (code.equals("NetStream.Play.InsufficientBW")) {
                 ChannelFuture future = channel.write(Command.closeStream(streamId));
                 future.addListener(ChannelFutureListener.CLOSE);
+                // \TODO create a listener for insufficient bandwidth
         	}
         } else if (level.equals("error")) {
         	logger.error(messageStr);
