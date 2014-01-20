@@ -5,10 +5,9 @@
     <!-- ========================= MAVEN ============================ -->
     
     <property name="maven.version" value="2.1.3" />
-    
     <target name="mvn-download">
         <mkdir dir="maven" />
-        <get src="http://ftp.unicamp.br/pub/apache/maven/binaries/maven-ant-tasks-${maven.version}.jar" dest="maven/" skipexisting="true" />
+        <get src="http://ftp.unicamp.br/pub/apache/maven/ant-tasks/${maven.version}/binaries/maven-ant-tasks-${maven.version}.jar" dest="maven/" skipexisting="true" />
     </target>
     
     <target name="mvn-init" unless="compile.classpath" xmlns:artifact="urn:maven-artifact-ant">
