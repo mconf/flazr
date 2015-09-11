@@ -34,7 +34,7 @@ public class RtmpConfig {
     public static enum Type { SERVER, SERVER_STOP, PROXY, PROXY_STOP }
 
     public static String SERVER_HOME_DIR = "home";
-    public static int TIMER_TICK_SIZE = 100;
+    public static int TIMER_TICK_SIZE = 10;
     public static int SERVER_PORT = 1935;
     public static int SERVER_STOP_PORT = 1934;
     public static int PROXY_PORT = 8000;
