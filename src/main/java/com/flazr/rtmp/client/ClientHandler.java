@@ -40,6 +40,7 @@ import org.red5.server.so.SharedObjectMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.flazr.io.flv.FlvWriter;
 import com.flazr.rtmp.LoopedReader;
 import com.flazr.rtmp.RtmpMessage;
 import com.flazr.rtmp.RtmpPublisher;
@@ -77,6 +78,7 @@ public class ClientHandler extends SimpleChannelUpstreamHandler {
     protected long bytesRead;
     protected long bytesReadLastSent;    
     protected int bytesWrittenWindow = 2500000;
+    protected boolean closeChannelWhenStreamStopped = true;
     
     public RtmpPublisher publisher;
     public int streamId;    
@@ -280,7 +282,9 @@ public class ClientHandler extends SimpleChannelUpstreamHandler {
                 ChannelFuture future = channel.write(Command.closeStream(streamId));
                 future.addListener(ChannelFutureListener.CLOSE);
             } else if (code.equals("NetStream.Play.Stop")) {
-            	channel.close();
+            	if (closeChannelWhenStreamStopped) {
+                	channel.close();
+            	}
             }
         } else if (level.equals("warning")) {
         	logger.warn(messageStr);
@@ -326,9 +330,13 @@ public class ClientHandler extends SimpleChannelUpstreamHandler {
             } else {
                 writer = options.getWriterToSave();
                 // do not create a writer if it wasn't set on the options
-//                if(writer == null)
+//                if(writer == null) {
 //                    writer = new FlvWriter(options.getStart(), options.getSaveAs());
-                channel.write(Command.play(streamId, options));
+//                }
+                
+                ClientOptions newOptions = new ClientOptions();
+                newOptions.setStreamName(options.getStreamName());
+                channel.write(Command.play(streamId, newOptions));
                 channel.write(Control.setBuffer(streamId, 0));
             }
         } else {
@@ -363,9 +371,8 @@ public class ClientHandler extends SimpleChannelUpstreamHandler {
             case PING_REQUEST:
                 final int time = control.getTime();
                 Control pong = Control.pingResponse(time);
-                // we don't want to print two boring messages every second
-//                logger.debug("server ping: {}", time);
-//                logger.debug("sending ping response: {}", pong);
+                logger.trace("server ping: {}", time);
+                logger.trace("sending ping response: {}", pong);
                 if (channel.isWritable())
                 	channel.write(pong);
                 break;
