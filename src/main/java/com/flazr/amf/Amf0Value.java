@@ -157,7 +157,7 @@ public class Amf0Value {
     }
 
     private static String decodeString(final ChannelBuffer in) {
-        final short size = in.readShort();
+        final int size = in.readUnsignedShort();
         final byte[] bytes = new byte[size];
         in.readBytes(bytes);
         return new String(bytes); // TODO UTF-8 ?
@@ -194,10 +194,19 @@ public class Amf0Value {
     }
 
     private static Object decode(final ChannelBuffer in, final Type type) {
+    	String decodedString = "";
         switch (type) {
             case NUMBER: return Double.longBitsToDouble(in.readLong());
             case BOOLEAN: return in.readByte() == BOOLEAN_TRUE;
-            case STRING: return decodeString(in);
+            case STRING: 
+            	try {
+            		decodedString = decodeString(in);
+            	} catch(Exception e) {
+                	logger.error("Exception while decoding a message from type {}: {}", type, e.toString());
+                	in.clear();
+                	decodedString = new String();
+            	}
+            	return decodedString;
             case ARRAY:
                 final int arraySize = in.readInt();
                 final Object[] array = new Object[arraySize];
@@ -236,7 +245,13 @@ public class Amf0Value {
                         }
                         break;
                     }
-                    map.put(decodeString(in), decode(in));
+                	try {
+                		decodedString = decodeString(in);
+                	} catch(Exception e) {
+                    	logger.error("Exception while decoding a message from type {}: {}", type, e.toString());
+                    	decodedString = new String();
+                	}
+                    map.put(decodedString, decode(in));
                 }
                 return map;
             case DATE:
@@ -253,7 +268,13 @@ public class Amf0Value {
             case UNSUPPORTED:
                 return null;
             case TYPED_OBJECT:
-                String classname = decodeString(in);
+            	try {
+            		decodedString = decodeString(in);
+            	} catch(Exception e) {
+                	logger.error("Exception while decoding a message from type {}: {}", type, e.toString());
+                	decodedString = new String();
+            	}
+                String classname = decodedString;
                 Amf0Object object = (Amf0Object) decode(in, OBJECT);
                 object.put("classname", classname);
                 return object;
